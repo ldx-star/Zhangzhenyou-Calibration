@@ -1,0 +1,4 @@
+/media/ldx/sd1/Zhangzhenyou_calibration/cmake-build-debug/CMakeFiles/lib.dir
+/media/ldx/sd1/Zhangzhenyou_calibration/cmake-build-debug/CMakeFiles/Zhangzhenyou_Calibration.dir
+/media/ldx/sd1/Zhangzhenyou_calibration/cmake-build-debug/CMakeFiles/edit_cache.dir
+/media/ldx/sd1/Zhangzhenyou_calibration/cmake-build-debug/CMakeFiles/rebuild_cache.dir

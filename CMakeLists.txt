@@ -3,7 +3,7 @@ project(Zhangzhenyou_Calibration)
 
 set(CMAKE_CXX_STANDARD 17)
 
-add_library(lib)
+add_library(lib src/CamCalibration.cpp)
 
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})

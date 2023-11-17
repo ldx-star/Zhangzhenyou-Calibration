@@ -12,8 +12,10 @@
  * @param img_num 图片个数
  */
 CamCalibration::CamCalibration(const std::string &chessBoard_path, const int col, const int row,
-                               const float square_size, const int img_num)
-        : chessBoard_path_(chessBoard_path), col_(col), row_(row), square_size_(square_size), img_num_(img_num) {}
+                               const double square_size, const int img_num)
+        : chessBoard_path_(chessBoard_path), col_(col), row_(row), square_size_(square_size), img_num_(img_num) {
+    K_ = cv::Mat::zeros(3,3,CV_64F);
+}
 
 /**
  *  相机标定
@@ -23,6 +25,7 @@ void CamCalibration::Calibrate() {
 
     if (readImages() && getKeyPoints()) {
         CalcH();
+        CalcK();
     }
 
     std::cout << "Calibrate succeed" << std::endl;
@@ -55,7 +58,7 @@ bool CamCalibration::readImages() {
  */
 bool CamCalibration::getKeyPoints() {
     auto chessBoards = chessBoards_;
-    const float square_size = square_size_;
+    const double square_size = square_size_;
     auto &points_3d_vec = points_3d_vec_;
     auto &points_2d_vec = points_2d_vec_;
 
@@ -77,7 +80,6 @@ bool CamCalibration::getKeyPoints() {
     //采集像素坐标,使用opencv库提取角点
     for (auto img: chessBoards) {
         std::vector<cv::Point2f> points_2d;
-
         bool found_flag = cv::findChessboardCorners(img, cv::Size(col, row), points_2d, cv::CALIB_CB_ADAPTIVE_THRESH +
                                                                                         cv::CALIB_CB_NORMALIZE_IMAGE); //cv::Size(col,row)
         if (!found_flag) {
@@ -85,8 +87,8 @@ bool CamCalibration::getKeyPoints() {
             return false;
         }
         //指定亚像素计算迭代标注
-        cv::TermCriteria criteria = cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 40, 0.001);
-        cv::cornerSubPix(img, points_2d, cv::Size(5, 5), cv::Size(-1, -1), criteria);
+        cv::TermCriteria criteria = cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 30, 0.001);
+        cv::cornerSubPix(img, points_2d, cv::Size(11, 11), cv::Size(-1, -1), criteria);
 
         //display
 //        cv::cvtColor(img,img,cv::COLOR_GRAY2BGR);
@@ -117,7 +119,7 @@ void CamCalibration::CalcH() {
         Normalize(points_3d, normal_points_3d, normT_3d);
         Normalize(points_2d, normal_points_2d, normT_2d);
 
-        cv::Mat H = cv::Mat::eye(3, 3, CV_32F);
+        cv::Mat H = cv::Mat::eye(3, 3, CV_64F);
 
         int corner_size = normal_points_2d.size();
         if (corner_size < 4) {
@@ -125,29 +127,29 @@ void CamCalibration::CalcH() {
             exit(-1);
         }
 
-        cv::Mat A(corner_size * 2, 9, CV_32F, cv::Scalar(0));
+        cv::Mat A(corner_size * 2, 9, CV_64F, cv::Scalar(0));
         for (int i = 0; i < corner_size; i++) {
-            cv::Point2f point_3d = points_3d[i];
-            cv::Point2f point_2d = points_2d[i];
-            A.at<float>(i * 2, 0) = point_3d.x;
-            A.at<float>(i * 2, 1) = point_3d.y;
-            A.at<float>(i * 2, 2) = 1;
-            A.at<float>(i * 2, 3) = 0;
-            A.at<float>(i * 2, 4) = 0;
-            A.at<float>(i * 2, 5) = 0;
-            A.at<float>(i * 2, 6) = -point_2d.x * point_3d.x;
-            A.at<float>(i * 2, 7) = -point_2d.x * point_3d.y;
-            A.at<float>(i * 2, 8) = -point_2d.x;
+            cv::Point2f point_3d = normal_points_3d[i];
+            cv::Point2f point_2d = normal_points_2d[i];
+            A.at<double>(i * 2, 0) = point_3d.x;
+            A.at<double>(i * 2, 1) = point_3d.y;
+            A.at<double>(i * 2, 2) = 1;
+            A.at<double>(i * 2, 3) = 0;
+            A.at<double>(i * 2, 4) = 0;
+            A.at<double>(i * 2, 5) = 0;
+            A.at<double>(i * 2, 6) = -point_2d.x * point_3d.x;
+            A.at<double>(i * 2, 7) = -point_2d.x * point_3d.y;
+            A.at<double>(i * 2, 8) = -point_2d.x;
 
-            A.at<float>(i * 2 + 1, 0) = 0;
-            A.at<float>(i * 2 + 1, 1) = 0;
-            A.at<float>(i * 2 + 1, 2) = 0;
-            A.at<float>(i * 2 + 1, 3) = point_3d.x;
-            A.at<float>(i * 2 + 1, 4) = point_3d.y;
-            A.at<float>(i * 2 + 1, 5) = 1;
-            A.at<float>(i * 2 + 1, 6) = -point_2d.y * point_3d.x;
-            A.at<float>(i * 2 + 1, 7) = -point_2d.y * point_3d.y;
-            A.at<float>(i * 2 + 1, 8) = -point_2d.y;
+            A.at<double>(i * 2 + 1, 0) = 0;
+            A.at<double>(i * 2 + 1, 1) = 0;
+            A.at<double>(i * 2 + 1, 2) = 0;
+            A.at<double>(i * 2 + 1, 3) = point_3d.x;
+            A.at<double>(i * 2 + 1, 4) = point_3d.y;
+            A.at<double>(i * 2 + 1, 5) = 1;
+            A.at<double>(i * 2 + 1, 6) = -point_2d.y * point_3d.x;
+            A.at<double>(i * 2 + 1, 7) = -point_2d.y * point_3d.y;
+            A.at<double>(i * 2 + 1, 8) = -point_2d.y;
         }
         cv::Mat U, W, VT;                                                    // A =UWV^T
         cv::SVD::compute(A, W, U, VT,
@@ -169,41 +171,127 @@ void CamCalibration::CalcH() {
  */
 void CamCalibration::Normalize(const std::vector<cv::Point2f> &points, std::vector<cv::Point2f> &normal_points,
                                cv::Mat &normT) {
-    //求均值
-    float mean_x = 0;
-    float mean_y = 0;
-    for (const auto &point: points) {
-        mean_x += point.x;
-        mean_y += point.y;
+//    //求均值
+//    double mean_x = 0;
+//    double mean_y = 0;
+//    for (const auto &point: points) {
+//        mean_x += point.x;
+//        mean_y += point.y;
+//    }
+//    mean_x /= points.size();
+//    mean_y /= points.size();
+//    //求方差
+//    for (const auto &point: points) {
+//        mean_x += point.x;
+//        mean_y += point.y;
+//    }
+//    double variance_x = 0;
+//    double variance_y = 0;
+//    for (const auto &point: points) {
+//        double tmp_x = pow(point.x - mean_x, 2);
+//        double tmp_y = pow(point.y - mean_y, 2);
+//        variance_x += tmp_x;
+//        variance_y += tmp_y;
+//    }
+//    variance_x = sqrt(variance_x);
+//    variance_y = sqrt(variance_y);
+//
+//    for (const auto &point: points) {
+//        cv::Point2f p;
+//        p.x = (point.x - mean_x) / variance_x;
+//        p.y = (point.y - mean_y) / variance_y;
+//        normal_points.push_back(p);
+//    }
+//    normT = cv::Mat::eye(3, 3, CV_64F);
+//    normT.at<double>(0, 0) = 1 / variance_x;
+//    normT.at<double>(0, 2) = -mean_x / variance_x;
+//    normT.at<double>(1, 1) = 1 / variance_y;
+//    normT.at<double>(1, 2) = -mean_y / variance_y;
+
+
+    normT = cv::Mat::eye(3, 3, CV_64F);
+    double mean_x = 0;
+    double mean_y = 0;
+    for (const auto &p : points)
+    {
+        mean_x += p.x;
+        mean_y += p.y;
     }
     mean_x /= points.size();
     mean_y /= points.size();
-    //求方差
-    for (const auto &point: points) {
-        mean_x += point.x;
-        mean_y += point.y;
+    double mean_dev_x = 0;
+    double mean_dev_y = 0;
+    for (const auto &p : points)
+    {
+        mean_dev_x += fabs(p.x - mean_x);
+        mean_dev_y += fabs(p.y - mean_y);
     }
-    float variance_x = 0;
-    float variance_y = 0;
-    for (const auto &point: points) {
-        float tmp_x = pow(point.x - mean_x, 2);
-        float tmp_y = pow(point.y - mean_y, 2);
-        variance_x += tmp_x;
-        variance_y += tmp_y;
+    mean_dev_x /= points.size();
+    mean_dev_y /= points.size();
+    double sx = 1.0 / mean_dev_x;
+    double sy = 1.0 / mean_dev_y;
+    normal_points.clear();
+    for (const auto &p : points)
+    {
+        cv::Point2f p_tmp;
+        p_tmp.x = sx * p.x - mean_x * sx;
+        p_tmp.y = sy * p.y - mean_y * sy;
+        normal_points.push_back(p_tmp);
     }
-    variance_x = sqrt(variance_x);
-    variance_y = sqrt(variance_y);
-
-    for (const auto &point: points) {
-        cv::Point2f p;
-        p.x = (point.x - mean_x) / variance_x;
-        p.y = (point.y - mean_y) / variance_y;
-        normal_points.push_back(p);
-    }
-    normT = cv::Mat::eye(3, 3, CV_32F);
-    normT.at<float>(0, 0) = 1 / variance_x;
-    normT.at<float>(0, 2) = -mean_x / variance_x;
-    normT.at<float>(1, 1) = 1 / variance_y;
-    normT.at<float>(1, 2) = -mean_y / variance_y;
+    normT.at<double>(0, 0) = sx;
+    normT.at<double>(0, 2) = -mean_x * sx;
+    normT.at<double>(1, 1) = sy;
+    normT.at<double>(1, 2) = -mean_y * sy;
 }
 
+/**
+ * 求内参矩阵
+ */
+void CamCalibration::CalcK() {
+    const auto &H_vec = H_vec_;
+    cv::Mat A(H_vec.size() * 2, 6, CV_64F, cv::Scalar(0));
+
+    for (int i = 0; i < H_vec.size(); i++) {
+        cv::Mat H = H_vec[i];
+        double h11 = H.at<double>(0, 0);
+        double h12 = H.at<double>(1, 0);
+        double h13 = H.at<double>(2, 0);
+        double h21 = H.at<double>(0, 1);
+        double h22 = H.at<double>(1, 1);
+        double h23 = H.at<double>(2, 1);
+
+        cv::Mat v11 = (cv::Mat_<double>(1, 6) << h11 * h11, h11 * h12 + h12 * h11, h12 * h12, h13 * h11 + h11 * h13, h13 * h12 + h12 * h13, h13 * h13);
+        cv::Mat v12 = (cv::Mat_<double>(1, 6) << h11 * h21, h11 * h22 + h12 * h21, h12 * h22, h13 * h21 + h11 * h23, h13 * h22 + h12 * h23, h13 * h23);
+        cv::Mat v22 = (cv::Mat_<double>(1, 6) << h21 * h21, h21 * h22 + h22 * h21, h22 * h22, h23 * h21 + h21 * h23, h23 * h22 + h22 * h23, h23 * h23);
+        v12.copyTo(A.row(2 * i));
+        cv::Mat v_tmp = (v11 - v22);
+        v_tmp.copyTo(A.row(2 * i + 1));
+    }
+    cv::Mat U,W,VT;
+    cv::SVD::compute(A,W,U,VT);
+//    std::cout << "A:\n" << A << std::endl;
+
+    cv::Mat B = VT.row(5);
+    std::cout << "B:\n" << B << std::endl;
+    double B11 = B.at<double>(0,0);
+    double B12 = B.at<double>(0,1);
+    double B22 = B.at<double>(0,2);
+    double B13 = B.at<double>(0,3);
+    double B23 = B.at<double>(0,4);
+    double B33 = B.at<double>(0,5);
+
+    double v0 = (B12 * B13 - B11 * B23) / (B11 * B22 - B12 * B12);
+    double lambda = B33 - (B13 * B13 + v0 * (B12 * B13 - B11 * B23)) / B11;
+    double alpha = sqrt(lambda / B11);
+    double beta = sqrt(lambda * B11 / (B11 * B22 - B12 * B12));
+    double gamma = -B12 * alpha * alpha * beta / lambda;
+    double u0 = gamma * v0 / beta - B13 * alpha * alpha / lambda;
+
+    gamma = 0;
+    K_.at<double>(0, 0) = alpha;
+    K_.at<double>(0, 1) = gamma;
+    K_.at<double>(0, 2) = u0;
+    K_.at<double>(1, 1) = beta;
+    K_.at<double>(1, 2) = v0;
+    std::cout << "K:\n" << K_ << std::endl;
+}

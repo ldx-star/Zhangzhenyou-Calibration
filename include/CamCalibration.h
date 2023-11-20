@@ -23,6 +23,7 @@ private:
     bool getKeyPoints();
     void CalcH();
     void CalcK();
+    void CalcRT();
     void Normalize(const std::vector<cv::Point2f> &points, std::vector<cv::Point2f> &normal_points,cv::Mat& normT);
 private:
     std::string chessBoard_path_;
@@ -32,10 +33,13 @@ private:
     int img_num_;
     cv::Mat K_;
 
+
     std::vector<cv::Mat> chessBoards_;
     std::vector<std::vector<cv::Point2f>> points_3d_vec_; // z = 0;
     std::vector<std::vector<cv::Point2f>> points_2d_vec_;
     std::vector<cv::Mat> H_vec_;
+    std::vector<cv::Mat> R_vec_;
+    std::vector<cv::Mat> t_vec_;
 };
 
 

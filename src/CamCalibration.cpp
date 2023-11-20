@@ -14,7 +14,7 @@
 CamCalibration::CamCalibration(const std::string &chessBoard_path, const int col, const int row,
                                const double square_size, const int img_num)
         : chessBoard_path_(chessBoard_path), col_(col), row_(row), square_size_(square_size), img_num_(img_num) {
-    K_ = cv::Mat::zeros(3,3,CV_64F);
+    K_ = cv::Mat::eye(3, 3, CV_64F);
 }
 
 /**
@@ -26,6 +26,7 @@ void CamCalibration::Calibrate() {
     if (readImages() && getKeyPoints()) {
         CalcH();
         CalcK();
+        CalcRT();
     }
 
     std::cout << "Calibrate succeed" << std::endl;
@@ -212,8 +213,7 @@ void CamCalibration::Normalize(const std::vector<cv::Point2f> &points, std::vect
     normT = cv::Mat::eye(3, 3, CV_64F);
     double mean_x = 0;
     double mean_y = 0;
-    for (const auto &p : points)
-    {
+    for (const auto &p: points) {
         mean_x += p.x;
         mean_y += p.y;
     }
@@ -221,8 +221,7 @@ void CamCalibration::Normalize(const std::vector<cv::Point2f> &points, std::vect
     mean_y /= points.size();
     double mean_dev_x = 0;
     double mean_dev_y = 0;
-    for (const auto &p : points)
-    {
+    for (const auto &p: points) {
         mean_dev_x += fabs(p.x - mean_x);
         mean_dev_y += fabs(p.y - mean_y);
     }
@@ -231,8 +230,7 @@ void CamCalibration::Normalize(const std::vector<cv::Point2f> &points, std::vect
     double sx = 1.0 / mean_dev_x;
     double sy = 1.0 / mean_dev_y;
     normal_points.clear();
-    for (const auto &p : points)
-    {
+    for (const auto &p: points) {
         cv::Point2f p_tmp;
         p_tmp.x = sx * p.x - mean_x * sx;
         p_tmp.y = sy * p.y - mean_y * sy;
@@ -260,25 +258,28 @@ void CamCalibration::CalcK() {
         double h22 = H.at<double>(1, 1);
         double h23 = H.at<double>(2, 1);
 
-        cv::Mat v11 = (cv::Mat_<double>(1, 6) << h11 * h11, h11 * h12 + h12 * h11, h12 * h12, h13 * h11 + h11 * h13, h13 * h12 + h12 * h13, h13 * h13);
-        cv::Mat v12 = (cv::Mat_<double>(1, 6) << h11 * h21, h11 * h22 + h12 * h21, h12 * h22, h13 * h21 + h11 * h23, h13 * h22 + h12 * h23, h13 * h23);
-        cv::Mat v22 = (cv::Mat_<double>(1, 6) << h21 * h21, h21 * h22 + h22 * h21, h22 * h22, h23 * h21 + h21 * h23, h23 * h22 + h22 * h23, h23 * h23);
+        cv::Mat v11 = (cv::Mat_<double>(1, 6) << h11 * h11, h11 * h12 + h12 * h11, h12 * h12, h13 * h11 + h11 * h13,
+                h13 * h12 + h12 * h13, h13 * h13);
+        cv::Mat v12 = (cv::Mat_<double>(1, 6) << h11 * h21, h11 * h22 + h12 * h21, h12 * h22, h13 * h21 + h11 * h23,
+                h13 * h22 + h12 * h23, h13 * h23);
+        cv::Mat v22 = (cv::Mat_<double>(1, 6) << h21 * h21, h21 * h22 + h22 * h21, h22 * h22, h23 * h21 + h21 * h23,
+                h23 * h22 + h22 * h23, h23 * h23);
         v12.copyTo(A.row(2 * i));
         cv::Mat v_tmp = (v11 - v22);
         v_tmp.copyTo(A.row(2 * i + 1));
     }
-    cv::Mat U,W,VT;
-    cv::SVD::compute(A,W,U,VT);
+    cv::Mat U, W, VT;
+    cv::SVD::compute(A, W, U, VT);
 //    std::cout << "A:\n" << A << std::endl;
 
     cv::Mat B = VT.row(5);
-    std::cout << "B:\n" << B << std::endl;
-    double B11 = B.at<double>(0,0);
-    double B12 = B.at<double>(0,1);
-    double B22 = B.at<double>(0,2);
-    double B13 = B.at<double>(0,3);
-    double B23 = B.at<double>(0,4);
-    double B33 = B.at<double>(0,5);
+//    std::cout << "B:\n" << B << std::endl;
+    double B11 = B.at<double>(0, 0);
+    double B12 = B.at<double>(0, 1);
+    double B22 = B.at<double>(0, 2);
+    double B13 = B.at<double>(0, 3);
+    double B23 = B.at<double>(0, 4);
+    double B33 = B.at<double>(0, 5);
 
     double v0 = (B12 * B13 - B11 * B23) / (B11 * B22 - B12 * B12);
     double lambda = B33 - (B13 * B13 + v0 * (B12 * B13 - B11 * B23)) / B11;
@@ -294,4 +295,44 @@ void CamCalibration::CalcK() {
     K_.at<double>(1, 1) = beta;
     K_.at<double>(1, 2) = v0;
     std::cout << "K:\n" << K_ << std::endl;
+}
+
+void CamCalibration::CalcRT() {
+    const auto &K = K_;
+    const auto &H_vec = H_vec_;
+    auto &R_vec = R_vec_;
+    auto &t_vec = t_vec_;
+
+    cv::Mat K_inverse;
+    cv::invert(K, K_inverse);
+
+    for (const auto &H: H_vec) {
+        cv::Mat M = K_inverse * H;
+
+        cv::Vec3d r1(M.at<double>(0, 0), M.at<double>(1, 0), M.at<double>(2, 0));
+        cv::Vec3d r2(M.at<double>(0, 1), M.at<double>(1, 1), M.at<double>(2, 1));
+        cv::Vec3d r3 = r1.cross(r2);
+        cv::Mat Q = cv::Mat::eye(3, 3, CV_64F);
+
+        Q.at<double>(0, 0) = r1(0);
+        Q.at<double>(1, 0) = r1(1);
+        Q.at<double>(2, 0) = r1(2);
+        Q.at<double>(0, 1) = r2(0);
+        Q.at<double>(1, 1) = r2(1);
+        Q.at<double>(2, 1) = r2(2);
+        Q.at<double>(0, 2) = r3(0);
+        Q.at<double>(1, 2) = r3(1);
+        Q.at<double>(2, 2) = r3(2);
+        cv::Mat normQ;
+        cv::normalize(Q, normQ);
+
+        cv::Mat U, W, VT;
+        cv::SVD::compute(normQ, W, U, VT, cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
+        cv::Mat R = U * VT;
+
+        R_vec.push_back(R);
+        cv::Mat t = cv::Mat::eye(3, 1, CV_64F);
+        M.col(2).copyTo(t.col(0));
+        t_vec.push_back(t);
+    }
 }

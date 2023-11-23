@@ -27,6 +27,7 @@ void CamCalibration::Calibrate() {
         CalcH();
         CalcK();
         CalcRT();
+        CalDistCoeff();
     }
 
     std::cout << "Calibrate succeed" << std::endl;
@@ -335,4 +336,61 @@ void CamCalibration::CalcRT() {
         M.col(2).copyTo(t.col(0));
         t_vec.push_back(t);
     }
+}
+
+void CamCalibration::CalDistCoeff() {
+    std::vector<double> r2_vec;
+    std::vector<cv::Point2f> ideal_point_vec;
+
+    //用一副图进行计算
+    const cv::Mat &K = K_;
+    const cv::Mat &R = R_vec_[0];
+    const cv::Mat &t = t_vec_[0];
+    auto points_3d = points_3d_vec_[0];
+    auto &dist_coeff = dist_coeff_;
+    for (const auto &point_3d: points_3d) {
+        cv::Mat p_3d = (cv::Mat_<double>(3, 1) << point_3d.x, point_3d.y, 0);
+        //世界坐标转相机坐标
+        cv::Mat p_cam = R * p_3d + t;
+        //转换成欧式坐标
+        p_cam.at<double>(0, 0) = p_cam.at<double>(0, 0) / p_cam.at<double>(2, 0);
+        p_cam.at<double>(1, 0) = p_cam.at<double>(1, 0) / p_cam.at<double>(2, 0);
+        p_cam.at<double>(2, 0) = 1;
+        double x = p_cam.at<double>(0, 0);
+        double y = p_cam.at<double>(1, 0);
+        double r2 = x * x + y * y;
+        r2_vec.push_back(r2);
+
+        //相机坐标转像素坐标
+        cv::Mat p_pix = K * p_cam;
+        ideal_point_vec.emplace_back(p_pix.at<double>(0, 0), p_pix.at<double>(1, 0));
+    }
+    const std::vector<cv::Point2f> &dist_point_vec = points_2d_vec_[0];
+    double u0 = K.at<double>(0, 2);
+    double v0 = K.at<double>(1, 2);
+
+    cv::Mat D = cv::Mat::eye(ideal_point_vec.size() * 2, 2, CV_64F);
+    cv::Mat d = cv::Mat::eye(ideal_point_vec.size() * 2, 1, CV_64F);
+    for (int i = 0; i < ideal_point_vec.size(); i++) {
+        double r2 = r2_vec[i];
+        const auto &ideal_p = ideal_point_vec[i];
+        const auto &dist_p = dist_point_vec[i];
+        D.at<double>(i * 2, 0) = (ideal_p.x - u0) * r2;
+        D.at<double>(i * 2, 1) = (ideal_p.x - u0) * r2 * r2;
+        D.at<double>(i * 2 + 1, 0) = (ideal_p.y - v0) * r2;
+        D.at<double>(i * 2 + 1, 1) = (ideal_p.y - v0) * r2 * r2;
+        d.at<double>(2 * i, 0) = dist_p.x - ideal_p.x;
+        d.at<double>(2 * i + 1, 0) = dist_p.y - ideal_p.y;
+
+    }
+    cv::Mat DT;
+    cv::transpose(D, DT);
+//    std::cout << "D:" << D << std::endl;
+
+    cv::Mat DTD_inverse;
+    cv::invert(DT * D, DTD_inverse);
+//    std::cout << "DTD_inv:" << DTD_inverse << std::endl;
+
+    dist_coeff = DTD_inverse * DT * d;
+    std::cout << "distort coeff: " << dist_coeff.at<double>(0, 0) << ", " << dist_coeff.at<double>(1, 0) << std::endl;
 }

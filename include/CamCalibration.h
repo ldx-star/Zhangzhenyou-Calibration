@@ -24,6 +24,7 @@ private:
     void CalcH();
     void CalcK();
     void CalcRT();
+    void CalDistCoeff();
     void Normalize(const std::vector<cv::Point2f> &points, std::vector<cv::Point2f> &normal_points,cv::Mat& normT);
 private:
     std::string chessBoard_path_;
@@ -32,6 +33,7 @@ private:
     double square_size_;
     int img_num_;
     cv::Mat K_;
+    cv::Mat dist_coeff_;
 
 
     std::vector<cv::Mat> chessBoards_;

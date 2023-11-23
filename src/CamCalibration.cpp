@@ -28,6 +28,8 @@ void CamCalibration::Calibrate() {
         CalcK();
         CalcRT();
         CalDistCoeff();
+        double repjErr = CalcRepjErr();
+        std::cout << "优化前重投影误差： " << repjErr << std::endl;
     }
 
     std::cout << "Calibrate succeed" << std::endl;
@@ -393,4 +395,65 @@ void CamCalibration::CalDistCoeff() {
 
     dist_coeff = DTD_inverse * DT * d;
     std::cout << "distort coeff: " << dist_coeff.at<double>(0, 0) << ", " << dist_coeff.at<double>(1, 0) << std::endl;
+}
+
+/**
+ * 计算重投影误差
+ * @return
+ */
+double CamCalibration::CalcRepjErr() {
+    const auto &points_3d_vec = points_3d_vec_;
+    const auto &points_2d_vec = points_2d_vec_;
+    double repjErr = 0;
+    int p_num = 0;
+
+    for (int i = 0; i < points_3d_vec.size(); i++) {
+        for (int j = 0; j < points_3d_vec[i].size(); j++) {
+            cv::Point3f p;
+            p.x = points_3d_vec[i][j].x;
+            p.y = points_3d_vec[i][j].y;
+            p.z = 0;
+
+            cv::Point2f repj_p = reProjectPoint(p, R_vec_[i], t_vec_[i], K_, dist_coeff_.at<double>(0, 0),
+                                                dist_coeff_.at<double>(1, 0));
+            const cv::Point2f origin_p = points_2d_vec[i][j];
+            repjErr += sqrt((origin_p.x - repj_p.x) * (origin_p.x - repj_p.x) +
+                            (origin_p.y - repj_p.y) * (origin_p.y - repj_p.y));
+            p_num++;
+        }
+    }
+    repjErr /= p_num;
+    return repjErr;
+}
+
+/**
+ *  获得重投影点（将世界坐标用求出的参数转成二维坐标）
+ * @param point_3d 世界坐标
+ * @param R 旋转矩阵
+ * @param t 平移矩阵
+ * @param K 相机内参
+ * @param k1 畸变系数
+ * @param k2 畸变系数
+ * @return 像素坐标
+ */
+cv::Point2f CamCalibration::reProjectPoint(const cv::Point3f &point_3d, const cv::Mat &R, const cv::Mat &t,
+                                           const cv::Mat &K, const double k1, const double k2) {
+    //世界坐标系
+    cv::Mat p = (cv::Mat_<double>(3, 1) << point_3d.x, point_3d.y, point_3d.z);
+    //相机坐标系
+    cv::Mat p_cam = R * p + t;
+    //转成欧式坐标
+    double x = p_cam.at<double>(0, 0) / p_cam.at<double>(2, 0);
+    double y = p_cam.at<double>(1, 0) / p_cam.at<double>(2, 0);
+    double r2 = x * x + y * y;
+
+    double x_dist = x * (1 + k1 * r2 + k2 * r2 * r2);
+    double y_dist = y * (1 + k1 * r2 + k2 * r2 * r2);
+    double u_dist = x_dist * K.at<double>(0, 0) + K.at<double>(0, 2);
+    double v_dist = y_dist * K.at<double>(1, 1) + K.at<double>(1, 2);
+
+    cv::Point2f p_dist;
+    p_dist.x = u_dist;
+    p_dist.y = v_dist;
+    return p_dist;
 }

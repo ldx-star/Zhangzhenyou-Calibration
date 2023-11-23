@@ -18,14 +18,27 @@ public:
 
     void Calibrate();
 
+    cv::Point2f reProjectPoint(const cv::Point3f &point_3d, const cv::Mat &R,const cv::Mat &t,const cv::Mat &K, const double k1,const double k2);
+
+
 private:
     bool readImages();
+
     bool getKeyPoints();
+
     void CalcH();
+
     void CalcK();
+
     void CalcRT();
+
     void CalDistCoeff();
-    void Normalize(const std::vector<cv::Point2f> &points, std::vector<cv::Point2f> &normal_points,cv::Mat& normT);
+
+    double CalcRepjErr();
+
+    void Normalize(const std::vector<cv::Point2f> &points, std::vector<cv::Point2f> &normal_points, cv::Mat &normT);
+
+
 private:
     std::string chessBoard_path_;
     int row_;

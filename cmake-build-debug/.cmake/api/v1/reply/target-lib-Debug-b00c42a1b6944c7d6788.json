@@ -32,7 +32,13 @@
 			{
 				"command" : 1,
 				"file" : 0,
-				"line" : 9,
+				"line" : 10,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 14,
 				"parent" : 0
 			}
 		]
@@ -51,6 +57,10 @@
 				{
 					"backtrace" : 2,
 					"path" : "/usr/local/include/opencv4"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/usr/include/eigen3"
 				}
 			],
 			"language" : "CXX",

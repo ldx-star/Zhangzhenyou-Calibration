@@ -8,6 +8,8 @@
 #include<opencv2/opencv.hpp>
 #include<iostream>
 #include<string>
+#include<ceres/ceres.h>
+#include "ceres/rotation.h"
 
 class CamCalibration {
 public:
@@ -35,6 +37,7 @@ private:
     void CalDistCoeff();
 
     double CalcRepjErr();
+    void Optimize();
 
     void Normalize(const std::vector<cv::Point2f> &points, std::vector<cv::Point2f> &normal_points, cv::Mat &normT);
 
@@ -47,6 +50,7 @@ private:
     int img_num_;
     cv::Mat K_;
     cv::Mat dist_coeff_;
+    struct ReprojErr;
 
 
     std::vector<cv::Mat> chessBoards_;

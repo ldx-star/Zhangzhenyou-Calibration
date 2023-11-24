@@ -30,6 +30,10 @@ void CamCalibration::Calibrate() {
         CalDistCoeff();
         double repjErr = CalcRepjErr();
         std::cout << "优化前重投影误差： " << repjErr << std::endl;
+        Optimize();
+        repjErr = CalcRepjErr();
+        std::cout << "优化后重投影误差： " << repjErr << std::endl;
+
     }
 
     std::cout << "Calibrate succeed" << std::endl;
@@ -456,4 +460,90 @@ cv::Point2f CamCalibration::reProjectPoint(const cv::Point3f &point_3d, const cv
     p_dist.x = u_dist;
     p_dist.y = v_dist;
     return p_dist;
+}
+
+struct CamCalibration::ReprojErr {
+public:
+    ReprojErr(const cv::Point2f &pixPoint_2d, const cv::Point2f &worldPoint_3d)
+            : pixPoint_2d_(pixPoint_2d), worldPoint_3d_(worldPoint_3d) {}
+
+    template<class T>
+    // const 优先修饰左边，左边没有修饰右边
+    // const int 、 int const 修饰int 内容不能被修改
+    // int *const 修饰* 指针不能被修改
+    bool operator()(const T *const Rt, const T *const K, const T *const dist_coeff, T *residual) const {
+        T p_3d[3] = {static_cast<T>(worldPoint_3d_.x, worldPoint_3d_.y, 0)};
+        T p[3];
+        //Rt[0,1,2]是旋转向量
+        ceres::AngleAxisRotatePoint(Rt, p_3d, p); // p_3d 通过旋转向量 得到 p
+        //Rt[3,4,5]是平移向量
+        p[0] += Rt[3];
+        p[1] = Rt[4];
+        p[2] = Rt[5];
+        //转成欧式坐标
+        T x = p[0] / p[2];
+        T y = p[1] / p[2];
+        T r2 = x * x + y * y;
+
+        const T &alpha = K[0];
+        const T &beta = K[1];
+        const T &u0 = K[2];
+        const T &v0 = K[3];
+
+        T x_dist = x * (static_cast<T> (1) + dist_coeff[0] * r2 + dist_coeff[1] * r2*r2);
+        T y_dist = y * (static_cast<T> (1) + dist_coeff[0] * r2 + dist_coeff[1] * r2*r2);
+
+        const T u_dist = alpha * x_dist +u0;
+        const T v_dist = beta * y_dist +v0;
+
+        residual[0] = u_dist - static_cast<T>(pixPoint_2d_.x);
+        residual[1] = v_dist - static_cast<T>(pixPoint_2d_.y);
+        return true;
+    }
+
+private:
+    const cv::Point2f worldPoint_3d_;
+    const cv::Point2f pixPoint_2d_;
+};
+
+void CamCalibration::Optimize() {
+    const auto &points_3d_vec = points_3d_vec_;
+    const auto &points_2d_vec = points_2d_vec_;
+    const auto &K = K_;
+    const auto &dist_coeff = dist_coeff_;
+    const auto &R_vec = R_vec_;
+    const auto &t_vec = t_vec_;
+    ceres::Problem problem;
+    int pic_num = points_3d_vec.size();
+    double *K_param = new double[4];
+    *(K_param + 0) = K.at<double>(0, 0);
+    *(K_param + 1) = K.at<double>(1, 1);
+    *(K_param + 2) = K.at<double>(0, 2);
+    *(K_param + 3) = K.at<double>(1, 2);
+    double *dist_coeff_param = new double[2];
+    *(dist_coeff_param) = dist_coeff.at<double>(0, 0);
+    *(dist_coeff_param + 1) = dist_coeff.at<double>(1, 0);
+
+    double *Rt_param = new double[6 * pic_num];
+    for (int i = 0; i < pic_num; i++) {
+        const cv::Mat &R = R_vec[i];
+        const cv::Mat &t = t_vec[i];
+        cv::Mat angle_axis;
+        cv::Rodrigues(R, angle_axis); //旋转矩阵转为旋转向量
+        *(Rt_param + 6 * i + 0) = angle_axis.at<double>(0, 0);
+        *(Rt_param + 6 * i + 1) = angle_axis.at<double>(1, 0);
+        *(Rt_param + 6 * i + 2) = angle_axis.at<double>(2, 0);
+        *(Rt_param + 6 * i + 3) = t.at<double>(0, 0);
+        *(Rt_param + 6 * i + 4) = t.at<double>(1, 0);
+        *(Rt_param + 6 * i + 5) = t.at<double>(2, 0);
+    }
+    for (int i = 0; i < pic_num; i++) {
+        const auto &points_3d = points_3d_vec[i];
+        const auto &points_2d = points_2d_vec[i];
+        for (int j = 0; j < points_3d.size(); j++) {
+            double *Rt_param_start = Rt_param + 6 * i;
+//            ceres::CostFunction *costFunction =
+        }
+    }
+
 }
